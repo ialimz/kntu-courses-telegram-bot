@@ -1,3 +1,6 @@
+import os
+import requests
+import re
 from itertools import chain
 from selenium import webdriver
 from selenium.webdriver import Chrome
@@ -5,59 +8,58 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 
+download_path = os.getcwd() + '/downloads/'
+
 
 def setup_selenium():
     opts = webdriver.ChromeOptions()
     opts.headless = True
     preferences = {"browser.helperApps.neverAsk.saveToDisk": "application/pdf",
-                    "browser.download.folderList": 2,
-                    "browser.download.manager.showWhenStarting": False,
-                    "plugins.always_open_pdf_externally": True}
+                   'download.default_directory': download_path,
+                   "browser.download.folderList": 2,
+                   "browser.download.manager.showWhenStarting": False,
+                   "plugins.always_open_pdf_externally": True}
     opts.add_experimental_option('prefs', preferences)
     browser = Chrome(options=opts)
+    browser.set_window_size(1440, 900)
+    enable_download_in_headless_chrome(browser, download_path)
     return browser
 
 
-def expand_shadow_element(browser, element):
-    shadow_root = browser.execute_script('return arguments[0].shadowRoot', element)
-    return shadow_root
+def enable_download_in_headless_chrome(browser, download_dir):
+    browser.command_executor._commands["send_command"] = ("POST", '/session/$sessionId/chromium/send_command')
+    params = {'cmd': 'Page.setDownloadBehavior', 'params': {'behavior': 'allow', 'downloadPath': download_dir}}
+    browser.execute("send_command", params)
 
 
-def every_downloads_chrome(driver):
-    if not driver.current_url.startswith("chrome://downloads"):
-        driver.get("chrome://downloads/")
-    return driver.execute_script("""
-        return document.querySelector('downloads-manager')
-        .shadowRoot.querySelector('#downloadsList')
-        .items.filter(e => e.state === 'COMPLETE')
-        .map(e => e.filePath || e.file_path || e.fileUrl || e.file_url);
-        """)
+def get_browser_cookies(browser):
+    browser_cookies = browser.get_cookies()[0]
+    return {browser_cookies['name']: browser_cookies['value']}
 
 
-# TODO: Clear downloads
-def clear_recent_downloads(browser):
-    return
-    # if not browser.current_url.startswith("chrome://downloads"):
-    #     browser.get("chrome://downloads/")
-    #
-    # browser.get("chrome://downloads")
-    # root1 = browser.find_element_by_tag_name('downloads-manager')
-    # shadow_root1 = expand_shadow_element(browser, root1)
-    #
-    # root2 = shadow_root1.find_element_by_css_selector('downloads-toolbar')
-    # shadow_root2 = expand_shadow_element(browser, root2)
-    #
-    # root3 = shadow_root2.find_element_by_css_selector('#moreActionsMenu')
-    # shadow_root3 = expand_shadow_element(browser, root3)
-    #
-    # clear_button = shadow_root3.find_element_by_xpath('//*[@id="moreActionsMenu"]/button[1]')
-    # clear_button.click()
+def get_file_path_from_response(response):
+    content_disposition = response.headers['content-disposition']
+    file_name = re.findall("filename=(.+)", content_disposition)[0].replace('"', '')
+    path = '{}{}'.format(download_path, file_name)
+    return path
+
+
+def is_file_downloaded(browser, link):
+    cookie_dict = get_browser_cookies(browser)
+    file = requests.head(link, allow_redirects=True, cookies=cookie_dict)
+    path = get_file_path_from_response(file)
+    return os.path.exists(path), path
 
 
 def download_resource(browser, link):
-    browser.get(link)
-    paths = WebDriverWait(browser, 120, 0.5).until(every_downloads_chrome)
-    return paths
+    is_downloaded = is_file_downloaded(browser, link)
+    if is_downloaded[0]:
+        return is_downloaded[1]
+    cookie_dict = get_browser_cookies(browser)
+    file = requests.get(link, allow_redirects=True, cookies=cookie_dict)
+    path = get_file_path_from_response(file)
+    open(path, 'wb').write(file.content)
+    return path
 
 
 def open_courses_login(browser):
