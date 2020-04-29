@@ -11,6 +11,7 @@ A Telegram Bot Assistant for KNTU's Courses Website
     
     pip install python-telegram-bot --upgrade
     pip install selenium
+    pip install requests
     
 **Usage:**
 Replace **'BOT_TOKEN'** in `main.py` file with your Bot Father's bot token
