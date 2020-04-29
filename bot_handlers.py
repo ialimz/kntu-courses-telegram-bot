@@ -1,4 +1,3 @@
-import os
 import selenium_utils as sel_util
 import bot_states as states
 import bot_logger
@@ -83,10 +82,8 @@ def show_topic_activity(update, context):
     mod = link.split('mod/')[1].split('/view')[0]
 
     def resource():
-        path = sel_util.download_resource(browser, link)[0]
+        path = sel_util.download_resource(browser, link)
         context.bot.send_document(chat_id=query.message.chat.id, document=open(path, 'rb'))
-        os.remove(path)
-        sel_util.clear_recent_downloads(browser)
 
     def assign():
         status = sel_util.get_assignment_status(browser, link)
